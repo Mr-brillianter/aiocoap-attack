@@ -164,7 +164,11 @@ async def main():
     root.add_resource(["other", "separate"], SeparateLargeResource())
     root.add_resource(["whoami"], WhoAmI())
 
-    await aiocoap.Context.create_server_context(root)
+    # Bind to localhost instead of any-address (simplesocketserver requires specific IP)
+    await aiocoap.Context.create_server_context(root, bind=("127.0.0.1", None))
+
+    print("CoAP server is running on 127.0.0.1:5683")
+    print("Press Ctrl+C to stop")
 
     # Run forever
     await asyncio.get_running_loop().create_future()

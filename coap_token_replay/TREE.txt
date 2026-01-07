@@ -1,0 +1,85 @@
+coap_token_replay/
+│
+├── 📄 主文档
+│   ├── README.md                  # 项目主文档 ⭐⭐⭐
+│   ├── HOW_TO_RUN.md              # 运行指南
+│   ├── SERVER_USAGE.md            # 服务器使用说明
+│   ├── PROJECT_SUMMARY.md         # 项目总结
+│   ├── FILE_STRUCTURE.md          # 文件结构说明
+│   ├── CLEANUP_REPORT.md          # 整理报告
+│   └── TREE.txt                   # 本文件
+│
+├── 🐍 Python 脚本
+│   ├── server.py                  # CoAP 服务器 ⭐⭐⭐
+│   ├── client.py                  # 客户端（包含 Monkey Patch） ⭐⭐⭐
+│   ├── attacker.py                # 攻击者程序
+│   ├── demo_token_reuse_attack.py # Token 重用攻击演示 ⭐⭐⭐
+│   ├── demo_interface_usage.py    # 接口使用演示
+│   ├── quick_test.py              # 快速测试脚本
+│   └── test_server.py             # 服务器测试
+│
+├── 📚 docs/ - 文档目录
+│   ├── INDEX.md                   # 文档索引和导航 ⭐
+│   ├── QUICK_START_TOKEN_REUSE.md # 快速开始指南 ⭐⭐⭐
+│   ├── TOKEN_REUSE_FIX_SUMMARY.md # Token 重用修复总结 ⭐⭐
+│   ├── FINAL_SOLUTION.md          # 最终解决方案 ⭐⭐
+│   ├── QUICK_START.md             # 通用快速开始
+│   ├── USAGE.md                   # 使用说明
+│   ├── README_FIXED.md            # 修复说明
+│   └── README_OLD_BACKUP.md       # 旧 README 备份
+│
+├── 🧪 tests/ - 测试目录
+│   ├── README.md                  # 测试说明 ⭐
+│   ├── test_monkey_patch.py       # Monkey Patch 测试 ⭐⭐⭐
+│   ├── test_token_parameter.py    # Token 参数测试
+│   ├── test_client_simple.py      # 简单客户端测试
+│   ├── test_attack.py             # 攻击测试
+│   ├── test_attacker_import.py    # 攻击者导入测试
+│   └── test_interface_selection.py # 接口选择测试
+│
+├── 📝 logs/ - 日志目录
+│   └── (运行时生成的日志文件)
+│
+└── 📦 resources/ - 资源目录
+    └── (资源文件)
+
+═══════════════════════════════════════════════════════════
+
+📊 统计信息:
+  - 主文档: 7 个
+  - Python 脚本: 7 个
+  - docs/ 文档: 8 个
+  - tests/ 测试: 7 个
+  - 总计: 29 个文件
+
+═══════════════════════════════════════════════════════════
+
+🚀 快速开始:
+
+  1. 启动服务器:
+     cd coap_token_replay
+     uv run python server.py
+
+  2. 运行演示:
+     cd coap_token_replay
+     uv run python demo_token_reuse_attack.py
+
+═══════════════════════════════════════════════════════════
+
+📚 文档导航:
+
+  主文档:        README.md
+  文档索引:      docs/INDEX.md
+  快速开始:      docs/QUICK_START_TOKEN_REUSE.md
+  技术细节:      docs/TOKEN_REUSE_FIX_SUMMARY.md
+  测试说明:      tests/README.md
+
+═══════════════════════════════════════════════════════════
+
+⭐ 重要性标记:
+  ⭐⭐⭐ - 核心文件，必须阅读
+  ⭐⭐   - 重要文件，建议阅读
+  ⭐     - 辅助文件，可选阅读
+
+═══════════════════════════════════════════════════════════
+
