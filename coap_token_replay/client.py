@@ -1,158 +1,102 @@
 #!/usr/bin/env python3
 """
-CoAP客户端程序，模拟易受攻击的客户端
-使用 Monkey Patch 绕过 aiocoap 的 Token 自动管理
+CoAP 客户端 - 使用原始 UDP 实现 Token 重放攻击演示
 """
+import socket
 import asyncio
 import logging
-import hashlib
-import functools
-from aiocoap import *
-from aiocoap import error
-from aiocoap.tokenmanager import TokenManager
-from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("CoAP-Client")
+logger = logging.getLogger("Client")
 
-# ============================================================
-# Monkey Patch: 允许手动设置 Token
-# ============================================================
-# 保存原始的 request 方法
-_original_request = TokenManager.request
-
-def _patched_request(self, request):
-    """
-    修改后的 request 方法，允许保留手动设置的 Token
-    如果消息已经有 Token，就不覆盖它
-    """
-    if self.outgoing_requests is None:
-        request.add_exception(error.LibraryShutdown())
-        return
-
-    msg = request.request
-
-    assert msg.code.is_request(), "Message code is not valid for request"
-    assert msg.remote is not None, "Remote not pre-populated"
-
-    # ★ 关键修改：只在 Token 为空时才分配新 Token
-    if not msg.token:
-        msg.token = self.next_token()
-        logger.debug(f"自动分配 Token: {msg.token.hex()}")
-    else:
-        logger.debug(f"保留手动设置的 Token: {msg.token.hex()}")
-
-    self.log.debug(
-        "Sending request - Token: %s, Remote: %s", msg.token.hex(), msg.remote
-    )
-
-    if msg.remote.is_multicast:
-        self.log.warning("Sending request to multicast via unicast request method")
-        key = (msg.token, None)
-    else:
-        key = (msg.token, msg.remote)
-
-    self.outgoing_requests[key] = request
-    request.on_interest_end(
-        functools.partial(self.outgoing_requests.pop, key, None)
-    )
-
-    try:
-        send_canceller = self.token_interface.send_message(
-            msg, lambda: request.add_exception(error.MessageError)
-        )
-    except Exception as e:
-        request.add_exception(e)
-        return
-
-    if send_canceller is not None:
-        request.on_interest_end(send_canceller)
-
-# 应用 Monkey Patch
-TokenManager.request = _patched_request
-logger.info("✓ 已应用 Monkey Patch：允许手动设置 Token")
-# ============================================================
-
-class VulnerableCoAPClient:
-    def __init__(self, server_url="coap://127.0.0.1:5684"):
-        self.server_url = server_url
-        self.context = None
-        self.current_token = b'fixed123'  # 使用固定Token - 这是漏洞！
-        
-    async def init(self):
-        """初始化客户端"""
-        self.context = await Context.create_client_context()
-        
-    def generate_token(self, request_num):
-        """生成Token（有漏洞的实现）"""
-        # 漏洞1：使用固定Token
-        # return b'fixed123'
-        
-        # 漏洞2：使用可预测的Token
-        return hashlib.md5(str(request_num % 3).encode()).digest()[:4]
-        
-        # 安全做法：使用随机Token
-        # return os.urandom(4)
-    
-    async def send_request(self, path, request_num=1):
-        """发送CoAP请求"""
-        try:
-            # 使用固定或可预测的Token（这是漏洞！）
-            token = self.current_token
-            logger.info(f"[{datetime.now()}] 发送请求#{request_num} - "
-                       f"路径: {path}, 期望 Token: {token.hex()}")
-
-            # 构建请求，使用 _token 参数手动设置 Token
-            request = Message(
-                code=Code.GET,
-                uri=f"{self.server_url}/{path}",
-                _token=token  # 使用内部参数设置 Token
-            )
-
-            logger.info(f"  → 消息创建后 Token: {request.token.hex()}")
-
-            # 发送请求
-            response = await self.context.request(request).response
-
-            logger.info(f"[{datetime.now()}] 收到响应#{request_num} - "
-                       f"Token: {response.token.hex() if response.token else 'none'}, "
-                       f"状态: {response.code}, 数据: {response.payload.decode()}")
-
-            # 验证 Token 是否被保留
-            if response.token == token:
-                logger.info(f"  ✓ Token 成功保留！")
-            else:
-                logger.warning(f"  ✗ Token 被修改: {token.hex()} → {response.token.hex()}")
-
-            return response
-
-        except Exception as e:
-            logger.error(f"请求失败: {e}")
-            return None
-    
-    async def simulate_attack_scenario(self):
-        """模拟攻击场景"""
-        logger.info("="*50)
-        logger.info("开始模拟令牌重用攻击场景")
-        logger.info("="*50)
-        
-        # 第一次请求
-        logger.info("\n1. 第一次请求（响应将被攻击者延迟）")
-        task1 = asyncio.create_task(self.send_request("toggle", 1))
-        
-        # 等待一段时间后发送第二次请求
-        await asyncio.sleep(1)
-        
-        logger.info("\n2. 第二次请求（使用相同的Token）")
-        task2 = asyncio.create_task(self.send_request("toggle", 2))
-        
-        # 等待两个请求完成
-        await asyncio.gather(task1, task2)
+def make_coap_request(token, path=b"/time", mid=0x1234):
+    """构造 CoAP GET 请求"""
+    tkl = len(token)
+    # CoAP header: Ver=1(2bit), Type=CON(0), TKL(4bit)
+    # Byte 0: Ver=01, Type=00(CON), TKL=token长度
+    # Code=0.01 (GET), Message ID (16bit)
+    # 0x40 = Ver=1(01), Type=CON(00), TKL=0; | tkl 设置 Token 长度
+    header = bytes([0x40 | (tkl & 0x0F), 0x01]) + mid.to_bytes(2, 'big')
+    # Options: Uri-Path Option 11 (Delta=11, Length=path长度)
+    # 0xB4 = 1011 0100 = delta=11, length=4; 0xB5 = delta=11, length=5
+    opt_header = 0xB0 | (len(path) & 0x0F)  # 动态计算 length
+    options = bytes([opt_header]) + path
+    return header + token + options + b'\xff'
 
 async def main():
-    client = VulnerableCoAPClient()
-    await client.init()
-    await client.simulate_attack_scenario()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(1)  # 缩短超时，便于接收循环
+    proxy = ("127.0.0.1", 5684)
+    
+    # 固定 Token
+    token = b'\xaa\xbb'
+    
+    print("\n" + "="*50)
+    print("CoAP Token 重放攻击演示")
+    print("="*50)
+    
+    # 用于存储接收到的响应
+    received_responses = []
+    stop_receiver = False
+    
+    async def receiver():
+        """独立接收协程：持续监听响应（使用 run_in_executor 避免阻塞事件循环）"""
+        loop = asyncio.get_event_loop()
+        logger.info("[接收器] 启动")
+        while not stop_receiver:
+            try:
+                data, _ = await loop.run_in_executor(None, sock.recvfrom, 4096)
+                received_responses.append(data)
+                logger.info(f"[接收器] 收到响应 | 数据: {data.hex()}")
+            except socket.timeout:
+                continue  # 超时后继续循环
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[接收器] 错误: {e}")
+                break
+        logger.info("[接收器] 关闭")
+    
+    # 启动接收协程
+    receiver_task = asyncio.create_task(receiver())
+    await asyncio.sleep(0.1)  # 短暂等待接收协程启动
+    
+    async def request(n, delay=0):
+        if delay:
+            await asyncio.sleep(delay)
+        req = make_coap_request(token)
+        logger.info(f"发送请求 #{n} | Token: {token.hex()}")
+        sock.sendto(req, proxy)
+    
+    # 第一次请求（攻击者缓存）
+    await request(1)
+    await asyncio.sleep(2)  # 等待足够长的时间让响应到达
+    
+    # 1秒后第二次请求
+    await request(2, delay=1)
+    await asyncio.sleep(2)  # 等待响应
+    
+    # 等待重放
+    print("\n等待攻击者重放旧响应...\n")
+    await asyncio.sleep(10)  # 等待重放发生
+    
+    # 停止接收协程
+    stop_receiver = True
+    receiver_task.cancel()
+    try:
+        await receiver_task
+    except asyncio.CancelledError:
+        pass
+    
+    # 显示收到的所有响应
+    print(f"\n共收到 {len(received_responses)} 个响应:")
+    for i, resp in enumerate(received_responses, 1):
+        print(f"  响应 #{i}: {resp.hex()}")
+    
+    print("="*50)
+    print("演示完成")
+    print("="*50)
+    sock.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
