@@ -21,3 +21,4 @@ doc/.jupyterlite.doit.db
 
 # left behind by the formatter sometimes
 .ruff_cache
+coap_token_replay.pcap
